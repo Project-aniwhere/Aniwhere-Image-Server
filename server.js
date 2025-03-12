@@ -85,11 +85,12 @@ app.post("/upload", upload.array("images"), async (req, res) => {
 });
 
 // 🔹 2️⃣ 이미지 리사이징 및 캐싱 API
-app.get("/images/:filename", async (req, res) => {
-  const { filename } = req.params;
+app.get("/images/*", async (req, res) => {
+  const filename = decodeURIComponent(req.params[0]); // 전체 경로 받아오기
   const width = parseInt(req.query.width, 10);
 
-  const originalPath = path.join(UPLOAD_DIR, filename);
+  // 원본 이미지 경로 절대 경로로 설정
+  const originalPath = path.resolve(UPLOAD_DIR, filename);
   if (!fs.existsSync(originalPath))
     return res.status(404).json({ error: "이미지를 찾을 수 없습니다." });
 
@@ -100,16 +101,19 @@ app.get("/images/:filename", async (req, res) => {
   // width가 없거나 원본보다 크면 원본 반환
   if (!width || width >= originalWidth) return res.sendFile(originalPath);
 
-  // 캐시 파일 경로 설정
-  const fileBaseName = path.parse(filename).name; // 확장자 제거한 파일명
-  const imageCacheDir = path.join(CACHE_DIR, fileBaseName);
-  const cachedPath = path.join(imageCacheDir, `${width}.webp`);
+  // 캐시 폴더 경로 절대 경로로 설정
+  const imageCacheDir = path.resolve(CACHE_DIR, path.dirname(filename)); // 기존 폴더 구조 유지
+  const cachedPath = path.resolve(
+    imageCacheDir,
+    `${path.basename(filename, path.extname(filename))}_${width}.webp`
+  );
 
   // 캐시된 파일이 있으면 바로 제공
   if (fs.existsSync(cachedPath)) return res.sendFile(cachedPath);
 
-  // 캐시 폴더 생성 (cache/{파일이름}/)
-  if (!fs.existsSync(imageCacheDir)) fs.mkdirSync(imageCacheDir);
+  // 캐시 폴더가 없으면 생성
+  if (!fs.existsSync(imageCacheDir))
+    fs.mkdirSync(imageCacheDir, { recursive: true });
 
   try {
     // 이미지 리사이징 후 캐시에 저장
@@ -123,6 +127,5 @@ app.get("/images/:filename", async (req, res) => {
     res.status(500).json({ error: "이미지 처리 중 오류 발생" });
   }
 });
-
 // 🔹 3️⃣ 서버 실행
 app.listen(PORT, () => console.log(`✅ 서버 실행: http://localhost:${PORT}`));
